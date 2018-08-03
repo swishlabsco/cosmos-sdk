@@ -53,7 +53,7 @@
 
 [[override]]
   name = "github.com/tendermint/iavl"
-  version = "=v0.9.2"
+  revision = "3d7299fe3f92617b0191bb4767fcbf6d90caab21"
 
 [[override]]
   name = "github.com/tendermint/tendermint"
