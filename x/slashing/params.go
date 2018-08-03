@@ -33,13 +33,13 @@ var (
 
 // Params - used for initializing default parameter for slashing at genesis
 type Params struct {
-	MaxEvidenceAge           int64
-	SignedBlocksWindow       int64
-	MinSignedPerWindow       sdk.Rat
-	DoubleSignUnbondDuration int64
-	DowntimeUnbondDuration   int64
-	SlashFractionDoubleSign  sdk.Rat
-	SlashFractionDowntime    sdk.Rat
+	MaxEvidenceAge           int64   `json:"max-evidence-age"`
+	SignedBlocksWindow       int64   `json:"signed-blocks-window"`
+	MinSignedPerWindow       sdk.Rat `json:"min-signed-per-window"`
+	DoubleSignUnbondDuration int64   `json:"doublesign-unbond-duration"`
+	DowntimeUnbondDuration   int64   `json:"downtime-unbond-duration"`
+	SlashFractionDoubleSign  sdk.Rat `json:"slash-fraction-doublesign"`
+	SlashFractionDowntime    sdk.Rat `json:"slash-fraction-downtime"`
 }
 
 // Default parameters used by Cosmos Hub
@@ -69,44 +69,44 @@ func HubDefaultParams() Params {
 // MaxEvidenceAge - Max age for evidence - 21 days (3 weeks)
 // MaxEvidenceAge = 60 * 60 * 24 * 7 * 3
 func (k Keeper) MaxEvidenceAge(ctx sdk.Context) (res int64) {
-	k.paramstore.Get(ctx, MaxEvidenceAgeKey(), &res)
+	k.paramstore.Get(ctx, maxEvidenceAgeKey, &res)
 	return
 }
 
 // SignedBlocksWindow - sliding window for downtime slashing
 func (k Keeper) SignedBlocksWindow(ctx sdk.Context) (res int64) {
-	k.paramstore.Get(ctx, SignedBlocksWindowKey(), &res)
+	k.paramstore.Get(ctx, signedBlocksWindowKey, &res)
 	return
 }
 
 // Downtime slashing thershold - default 50% of the SignedBlocksWindow
 func (k Keeper) MinSignedPerWindow(ctx sdk.Context) int64 {
 	var minSignedPerWindow sdk.Rat
-	k.paramstore.Get(ctx, MinSignedPerWindowKey(), &minSignedPerWindow)
+	k.paramstore.Get(ctx, minSignedPerWindowKey, &minSignedPerWindow)
 	signedBlocksWindow := k.SignedBlocksWindow(ctx)
 	return sdk.NewRat(signedBlocksWindow).Mul(minSignedPerWindow).RoundInt64()
 }
 
 // Double-sign unbond duration
 func (k Keeper) DoubleSignUnbondDuration(ctx sdk.Context) (res int64) {
-	k.paramstore.Get(ctx, DoubleSignUnbondDurationKey(), &res)
+	k.paramstore.Get(ctx, doubleSignUnbondDurationKey, &res)
 	return
 }
 
 // Downtime unbond duration
 func (k Keeper) DowntimeUnbondDuration(ctx sdk.Context) (res int64) {
-	k.paramstore.Get(ctx, DowntimeUnbondDurationKey(), &res)
+	k.paramstore.Get(ctx, downtimeUnbondDurationKey, &res)
 	return
 }
 
 // SlashFractionDoubleSign - currently default 5%
 func (k Keeper) SlashFractionDoubleSign(ctx sdk.Context) (res sdk.Rat) {
-	k.paramstore.Get(ctx, SlashFractionDoubleSignKey(), &res)
+	k.paramstore.Get(ctx, slashFractionDoubleSignKey, &res)
 	return
 }
 
 // SlashFractionDowntime - currently default 1%
 func (k Keeper) SlashFractionDowntime(ctx sdk.Context) (res sdk.Rat) {
-	k.paramstore.Get(ctx, SlashFractionDowntimeKey(), &res)
+	k.paramstore.Get(ctx, slashFractionDowntimeKey, &res)
 	return
 }
