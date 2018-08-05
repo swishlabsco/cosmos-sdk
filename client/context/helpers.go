@@ -65,6 +65,11 @@ func (ctx CoreContext) Query(path string) (res []byte, err error) {
 	return ctx.query(path, nil)
 }
 
+// Query information about the connected node with a data payload
+func (ctx CoreContext) QueryWithData(path string, data []byte) (res []byte, err error) {
+	return ctx.query(path, data)
+}
+
 // QueryStore from Tendermint with the provided key and storename
 func (ctx CoreContext) QueryStore(key cmn.HexBytes, storeName string) (res []byte, err error) {
 	return ctx.queryStore(key, storeName, "key")
