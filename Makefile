@@ -15,7 +15,7 @@ ci: get_tools get_vendor_deps install test_cover test_lint test
 ########################################
 ### Build/Install
 
-check-ledger: 
+check-ledger:
 ifeq ($(LEDGER_ENABLED),true)
 ifndef GCC
 $(error "gcc not installed for ledger support, please install")
@@ -170,23 +170,29 @@ localnet-stop:
 ########################################
 ### Remote validator nodes using terraform and ansible
 
-TESTNET_NAME?=remotenet
+TESTNET_NAME?=remotetestnet
 SERVERS?=4
+SSH_KEY_NAME?="$(TESTNET_NAME)-deployer"
+SSH_PRIVATE_FILE?="$(HOME)/.ssh/id_rsa"
+SSH_PUBLIC_FILE?="$(HOME)/.ssh/id_rsa.pub"
 BINARY=$(CURDIR)/build/gaiad
+
 remotenet-start:
-	@if [ -z "$(DO_API_TOKEN)" ]; then echo "DO_API_TOKEN environment variable not set." ; false ; fi
-	@if ! [ -f $(HOME)/.ssh/id_rsa.pub ]; then ssh-keygen ; fi
+	@if [ -z "$(AWS_SECRET_KEY)" ]; then echo "AWS_SECRET_KEY environment variable not set." ; false ; fi
+	@if [ -z "$(AWS_ACCESS_KEY)" ]; then echo "AWS_ACCESS_KEY environment variable not set." ; false ; fi
+	@if ! [ -f $(SSH_PUBLIC_FILE) ]; then ssh-keygen ; fi
 	@if [ -z "`file $(BINARY) | grep 'ELF 64-bit'`" ]; then echo "Please build a linux binary using 'make build-linux'." ; false ; fi
-	cd networks/remote/terraform && terraform init && terraform apply -var DO_API_TOKEN="$(DO_API_TOKEN)" -var SSH_PUBLIC_FILE="$(HOME)/.ssh/id_rsa.pub" -var SSH_PRIVATE_FILE="$(HOME)/.ssh/id_rsa" -var TESTNET_NAME="$(TESTNET_NAME)" -var SERVERS="$(SERVERS)"
-	cd networks/remote/ansible && ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook -i inventory/digital_ocean.py -l "$(TESTNET_NAME)" -e BINARY=$(BINARY) -e TESTNET_NAME="$(TESTNET_NAME)" setup-validators.yml
-	cd networks/remote/ansible && ansible-playbook -i inventory/digital_ocean.py -l "$(TESTNET_NAME)" start.yml
+	cd networks/remote-aws/terraform && terraform init && terraform apply -var TESTNET_NAME="$(TESTNET_NAME)" -var SERVERS="$(SERVERS)" -var AWS_SECRET_KEY="$(AWS_SECRET_KEY)" -var AWS_ACCESS_KEY="$(AWS_ACCESS_KEY)" -var SSH_KEY_NAME="$(SSH_KEY_NAME)" -var SSH_PRIVATE_FILE="$(SSH_PRIVATE_FILE)" -var SSH_PUBLIC_FILE="$(SSH_PUBLIC_FILE)"
+	cd networks/remote-aws/terraform && ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook -i /usr/local/bin/terraform-inventory -e BINARY=$(BINARY) -e TESTNET_NAME="$(TESTNET_NAME)" ../ansible/setup-validators.yml
+	cd networks/remote-aws/terraform && ansible-playbook -i /usr/local/bin/terraform-inventory -e TESTNET_NAME="$(TESTNET_NAME)" ../ansible/start.yml
 
 remotenet-stop:
-	@if [ -z "$(DO_API_TOKEN)" ]; then echo "DO_API_TOKEN environment variable not set." ; false ; fi
-	cd networks/remote/terraform && terraform destroy -var DO_API_TOKEN="$(DO_API_TOKEN)" -var SSH_PUBLIC_FILE="$(HOME)/.ssh/id_rsa.pub" -var SSH_PRIVATE_FILE="$(HOME)/.ssh/id_rsa"
+	@if [ -z "$(AWS_SECRET_KEY)" ]; then echo "AWS_SECRET_KEY environment variable not set." ; false ; fi
+	@if [ -z "$(AWS_ACCESS_KEY)" ]; then echo "AWS_ACCESS_KEY environment variable not set." ; false ; fi
+	cd networks/remote-aws/terraform && terraform destroy -var AWS_SECRET_KEY="$(AWS_SECRET_KEY)" -var AWS_ACCESS_KEY="$(AWS_ACCESS_KEY)" -var SSH_KEY_NAME="$(SSH_KEY_NAME)" -var SSH_PRIVATE_FILE="$(SSH_PRIVATE_FILE)" -var SSH_PUBLIC_FILE="$(SSH_PUBLIC_FILE)"
 
 remotenet-status:
-	cd networks/remote/ansible && ansible-playbook -i inventory/digital_ocean.py -l "$(TESTNET_NAME)" status.yml
+	cd networks/remote-aws/terraform && ansible-playbook -i /usr/local/bin/terraform-inventory ../ansible/status.yml
 
 # To avoid unintended conflicts with file names, always add to .PHONY
 # unless there is a reason not to.
