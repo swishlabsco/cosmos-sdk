@@ -44,6 +44,7 @@ FEATURES
 * [gov] Add slashing for validators who do not vote on a proposal
 * [cli] added `gov query-proposals` command to CLI. Can filter by `depositer`, `voter`, and `status`
 * [core] added BaseApp.Seal - ability to seal baseapp parameters once they've been set
+* [querier] added custom querier functionality, so ABCI query requests can be handled by keepers
 
 IMPROVEMENTS
 * [baseapp] Allow any alphanumeric character in route
