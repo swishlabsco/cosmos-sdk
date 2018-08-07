@@ -34,3 +34,6 @@ vagrant
 
 # Graphviz
 dependency-graph.png
+
+# Secrets
+secrets
