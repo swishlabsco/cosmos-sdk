@@ -63,6 +63,13 @@ install_examples:
 install_debug:
 	go install $(BUILD_FLAGS) ./cmd/gaia/cmd/gaiadebug
 
+install_thorchain: check-ledger
+	go install $(BUILD_FLAGS) ./cmd/thorchain/cmd/thorchaind
+	go install $(BUILD_FLAGS) ./cmd/thorchain/cmd/thorchaincli
+
+init_thorchain:
+	thorchaind init --name localtest
+
 dist:
 	@bash publish/dist.sh
 	@bash publish/publish.sh
