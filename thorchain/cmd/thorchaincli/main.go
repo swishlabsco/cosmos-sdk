@@ -10,6 +10,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/client/lcd"
 	"github.com/cosmos/cosmos-sdk/client/rpc"
 	"github.com/cosmos/cosmos-sdk/client/tx"
+	countercmd "github.com/cosmos/cosmos-sdk/thorchain/x/counter/client/cli"
 	"github.com/cosmos/cosmos-sdk/version"
 	authcmd "github.com/cosmos/cosmos-sdk/x/auth/client/cli"
 	bankcmd "github.com/cosmos/cosmos-sdk/x/bank/client/cli"
@@ -18,7 +19,7 @@ import (
 	slashingcmd "github.com/cosmos/cosmos-sdk/x/slashing/client/cli"
 	stakecmd "github.com/cosmos/cosmos-sdk/x/stake/client/cli"
 
-	"github.com/cosmos/cosmos-sdk/cmd/thorchain/app"
+	"github.com/cosmos/cosmos-sdk/thorchain/app"
 )
 
 // rootCmd is the entry point for this binary
@@ -122,6 +123,20 @@ func main() {
 		)...)
 	rootCmd.AddCommand(
 		govCmd,
+	)
+
+	//Add counter commands
+	counterCmd := &cobra.Command{
+		Use:   "counter",
+		Short: "Counter subcommands",
+	}
+	counterCmd.AddCommand(
+		client.PostCommands(
+			countercmd.GetCmdAdd(cdc),
+			countercmd.GetCmdSubtract(cdc),
+		)...)
+	rootCmd.AddCommand(
+		counterCmd,
 	)
 
 	//Add auth and bank commands

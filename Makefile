@@ -63,12 +63,19 @@ install_examples:
 install_debug:
 	go install $(BUILD_FLAGS) ./cmd/gaia/cmd/gaiadebug
 
-install_thorchain: check-ledger
-	go install $(BUILD_FLAGS) ./cmd/thorchain/cmd/thorchaind
-	go install $(BUILD_FLAGS) ./cmd/thorchain/cmd/thorchaincli
+thorchain_install: check-ledger
+	go install $(BUILD_FLAGS) ./thorchain/cmd/thorchaind
+	go install $(BUILD_FLAGS) ./thorchain/cmd/thorchaincli
 
-init_thorchain:
+thorchain_init:
 	thorchaind init --name localtest
+
+thorchain_recreate: check-ledger
+	rm -rf ~/.thorchain*
+	go install $(BUILD_FLAGS) ./thorchain/cmd/thorchaind
+	go install $(BUILD_FLAGS) ./thorchain/cmd/thorchaincli
+	thorchaind init --name localvalidator
+	thorchaincli keys add testaccount
 
 dist:
 	@bash publish/dist.sh
