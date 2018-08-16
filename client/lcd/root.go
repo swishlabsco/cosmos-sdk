@@ -22,6 +22,7 @@ import (
 	cmn "github.com/tendermint/tendermint/libs/common"
 	"github.com/tendermint/tendermint/libs/log"
 	tmserver "github.com/tendermint/tendermint/rpc/lib/server"
+	clp "github.com/thorchain/THORChain/x/clp/client/rest"
 )
 
 // ServeCommand will generate a long-running rest server
@@ -93,6 +94,7 @@ func createHandler(cdc *wire.Codec) http.Handler {
 	stake.RegisterRoutes(ctx, r, cdc, kb)
 	slashing.RegisterRoutes(ctx, r, cdc, kb)
 	gov.RegisterRoutes(ctx, r, cdc)
+	clp.RegisterRoutes(ctx, r, cdc, kb)
 
 	return r
 }
