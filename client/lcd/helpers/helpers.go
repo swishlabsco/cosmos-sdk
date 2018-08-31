@@ -2,10 +2,23 @@ package lcd
 
 import (
 	"fmt"
+	"io/ioutil"
+	"net/http"
 
 	"github.com/cosmos/cosmos-sdk/client/context"
+	"github.com/cosmos/cosmos-sdk/crypto/keys"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/wire"
 )
+
+type baseSendBody struct {
+	LocalAccountName string `json:"name"`
+	Password         string `json:"password"`
+	ChainID          string `json:"chain_id"`
+	AccountNumber    int64  `json:"account_number"`
+	Sequence         int64  `json:"sequence"`
+	Gas              int64  `json:"gas"`
+}
 
 //Ensure Account Number is added to context for transaction
 func EnsureAccountNumber(ctx context.CoreContext, accountNumber int64, from sdk.AccAddress) (context.CoreContext, error) {
@@ -35,91 +48,113 @@ func EnsureSequence(ctx context.CoreContext, sequence int64, from sdk.AccAddress
 	return ctx, nil
 }
 
-// MakeRequestHandlerFn - create http request handler to send coins to a address with correct json type
-// func MakeRequestHandlerFn(cdc *wire.Codec, kb keys.Keybase, ctx context.CoreContext, sendBody interface{}) {
+func extractRequest(w http.ResponseWriter, r *http.Request, cdc *wire.Codec) (baseSendBody, []byte, error) {
+	var m baseSendBody
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(err.Error()))
+		return baseSendBody{}, nil, err
+	}
+	err = cdc.UnmarshalJSON(body, &m)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(err.Error()))
+		return baseSendBody{}, nil, err
+	}
+	return m, body, nil
+}
 
-// 	return RequestHandlerFn()
-// }
+func setupContext(w http.ResponseWriter, ctx context.CoreContext, m baseSendBody, from sdk.AccAddress) (context.CoreContext, error) {
+	// add gas to context
+	ctx = ctx.WithGas(m.Gas)
 
-// RequestHandlerFn - http request handler to send coins to a address
-// func RequestHandlerFn(cdc *wire.Codec, kb keys.Keybase, ctx context.CoreContext, sendBody interface{}, msgBuilder func(sdk.AccAddress, interface{}) sdk.Msg) http.HandlerFunc {
-// 	ctx = ctx.WithDecoder(authcmd.GetAccountDecoder(cdc))
-// 	return func(w http.ResponseWriter, r *http.Request) {
-// 		var m sendBody
-// 		body, err := ioutil.ReadAll(r.Body)
-// 		if err != nil {
-// 			w.WriteHeader(http.StatusBadRequest)
-// 			w.Write([]byte(err.Error()))
-// 			return
-// 		}
-// 		err = msgCdc.UnmarshalJSON(body, &m)
-// 		if err != nil {
-// 			w.WriteHeader(http.StatusBadRequest)
-// 			w.Write([]byte(err.Error()))
-// 			return
-// 		}
+	// add chain-id to context
+	ctx = ctx.WithChainID(m.ChainID)
 
-// 		info, err := kb.Get(m.LocalAccountName)
-// 		if err != nil {
-// 			w.WriteHeader(http.StatusUnauthorized)
-// 			w.Write([]byte(err.Error()))
-// 			return
-// 		}
+	//add account number and sequence
+	ctx, err := EnsureAccountNumber(ctx, m.AccountNumber, from)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(err.Error()))
+		return ctx, err
+	}
+	ctx, err = EnsureSequence(ctx, m.Sequence, from)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(err.Error()))
+		return ctx, err
+	}
+	return ctx, nil
+}
 
-// 		from := sdk.AccAddress(info.GetPubKey().Address())
+func getFromAddress(w http.ResponseWriter, kb keys.Keybase, localAccountName string) (sdk.AccAddress, error) {
+	info, err := kb.Get(localAccountName)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(err.Error()))
+		return sdk.AccAddress{}, err
+	}
 
-// 		// build message
-// 		msg := msgBuilder(from, m)
+	from := sdk.AccAddress(info.GetPubKey().Address())
+	return from, nil
+}
 
-// 		if err != nil { // XXX rechecking same error ?
-// 			w.WriteHeader(http.StatusInternalServerError)
-// 			w.Write([]byte(err.Error()))
-// 			return
-// 		}
+func processMsg(w http.ResponseWriter, ctx context.CoreContext, localAccountName string, password string, cdc *wire.Codec, msg sdk.Msg) ([]byte, error) {
+	//sign
+	txBytes, err := ctx.SignAndBuild(localAccountName, password, []sdk.Msg{msg}, cdc)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(err.Error()))
+		return nil, err
+	}
 
-// 		// add gas to context
-// 		ctx = ctx.WithGas(m.Gas)
+	// send
+	res, err := ctx.BroadcastTx(txBytes)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(err.Error()))
+		return nil, err
+	}
 
-// 		// add chain-id to context
-// 		ctx = ctx.WithChainID(m.ChainID)
+	output, err := wire.MarshalJSONIndent(cdc, res)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(err.Error()))
+		return nil, err
+	}
+	return output, err
+}
 
-// 		//add account number and sequence
-// 		ctx, err = EnsureAccountNumber(ctx, m, from)
-// 		if err != nil {
-// 			w.WriteHeader(http.StatusInternalServerError)
-// 			w.Write([]byte(err.Error()))
-// 			return
-// 		}
-// 		ctx, err = EnsureSequence(ctx, m, from)
-// 		if err != nil {
-// 			w.WriteHeader(http.StatusInternalServerError)
-// 			w.Write([]byte(err.Error()))
-// 			return
-// 		}
+// RequestHandlerFn - http request handler to handle generic transaction api call
+func RequestHandlerFn(cdc *wire.Codec, kb keys.Keybase, ctx context.CoreContext, msgBuilder func(http.ResponseWriter, *wire.Codec, sdk.AccAddress, []byte) (sdk.Msg, error)) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		m, body, err := extractRequest(w, r, cdc)
+		if err != nil {
+			return
+		}
 
-// 		//sign
-// 		txBytes, err := ctx.SignAndBuild(m.LocalAccountName, m.Password, []sdk.Msg{msg}, cdc)
-// 		if err != nil {
-// 			w.WriteHeader(http.StatusUnauthorized)
-// 			w.Write([]byte(err.Error()))
-// 			return
-// 		}
+		from, err := getFromAddress(w, kb, m.LocalAccountName)
+		if err != nil {
+			return
+		}
 
-// 		// send
-// 		res, err := ctx.BroadcastTx(txBytes)
-// 		if err != nil {
-// 			w.WriteHeader(http.StatusInternalServerError)
-// 			w.Write([]byte(err.Error()))
-// 			return
-// 		}
+		ctx, err = setupContext(w, ctx, m, from)
+		if err != nil {
+			return
+		}
 
-// 		output, err := wire.MarshalJSONIndent(cdc, res)
-// 		if err != nil {
-// 			w.WriteHeader(http.StatusInternalServerError)
-// 			w.Write([]byte(err.Error()))
-// 			return
-// 		}
+		// build message
+		msg, err := msgBuilder(w, cdc, from, body)
+		if err != nil {
+			return
+		}
 
-// 		w.Write(output)
-// 	}
-// }
+		output, err := processMsg(w, ctx, m.LocalAccountName, m.Password, cdc, msg)
+		if err != nil {
+			return
+		}
+
+		w.Write(output)
+	}
+}
