@@ -26,6 +26,7 @@ type baseBody struct {
 //Ensure Account Number is added to context for transaction
 func EnsureAccountNumber(ctx context.CoreContext, accountNumber int64, from sdk.AccAddress) (context.CoreContext, error) {
 	if accountNumber != 0 {
+		ctx = ctx.WithAccountNumber(accountNumber)
 		return ctx, nil
 	}
 	accountNumber, err := ctx.GetAccountNumber(from)
@@ -40,6 +41,7 @@ func EnsureAccountNumber(ctx context.CoreContext, accountNumber int64, from sdk.
 //Ensure Sequence is added to context for transaction
 func EnsureSequence(ctx context.CoreContext, sequence int64, from sdk.AccAddress) (context.CoreContext, error) {
 	if sequence != 0 {
+		ctx = ctx.WithSequence(sequence)
 		return ctx, nil
 	}
 	sequence, err := ctx.NextSequence(from)
