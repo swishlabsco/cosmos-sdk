@@ -11,6 +11,7 @@ import (
 	tx "github.com/cosmos/cosmos-sdk/client/tx"
 	cryptokeys "github.com/cosmos/cosmos-sdk/crypto/keys"
 	"github.com/cosmos/cosmos-sdk/wire"
+	authcmd "github.com/cosmos/cosmos-sdk/x/auth/client/cli"
 	auth "github.com/cosmos/cosmos-sdk/x/auth/client/rest"
 	bank "github.com/cosmos/cosmos-sdk/x/bank/client/rest"
 	gov "github.com/cosmos/cosmos-sdk/x/gov/client/rest"
@@ -125,7 +126,7 @@ func createHandler(cdc *wire.Codec) http.Handler {
 		panic(err)
 	}
 
-	ctx := context.NewCoreContextFromViper()
+	ctx := context.NewCoreContextFromViper().WithDecoder(authcmd.GetAccountDecoder(cdc))
 
 	// TODO: make more functional? aka r = keys.RegisterRoutes(r)
 	r.HandleFunc("/version", CLIVersionRequestHandler).Methods("GET")
@@ -152,7 +153,7 @@ func createHandlerWithCallback(cdc *wire.Codec, callback func(context.CoreContex
 		panic(err)
 	}
 
-	ctx := context.NewCoreContextFromViper()
+	ctx := context.NewCoreContextFromViper().WithDecoder(authcmd.GetAccountDecoder(cdc))
 
 	// TODO: make more functional? aka r = keys.RegisterRoutes(r)
 	r.HandleFunc("/version", CLIVersionRequestHandler).Methods("GET")
