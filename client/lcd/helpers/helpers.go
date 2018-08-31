@@ -9,9 +9,12 @@ import (
 	"github.com/cosmos/cosmos-sdk/crypto/keys"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/wire"
+	"github.com/gorilla/mux"
 )
 
-type baseSendBody struct {
+type baseBody struct {
+	// fees and gas is not used currently
+	// Fees             sdk.Coin  `json="fees"`
 	LocalAccountName string `json:"name"`
 	Password         string `json:"password"`
 	ChainID          string `json:"chain_id"`
@@ -48,24 +51,27 @@ func EnsureSequence(ctx context.CoreContext, sequence int64, from sdk.AccAddress
 	return ctx, nil
 }
 
-func extractRequest(w http.ResponseWriter, r *http.Request, cdc *wire.Codec) (baseSendBody, []byte, error) {
-	var m baseSendBody
+func extractRequest(w http.ResponseWriter, r *http.Request, cdc *wire.Codec) (baseBody, []byte, map[string]string, error) {
+	var m baseBody
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(err.Error()))
-		return baseSendBody{}, nil, err
+		return baseBody{}, nil, nil, err
 	}
 	err = cdc.UnmarshalJSON(body, &m)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(err.Error()))
-		return baseSendBody{}, nil, err
+		return baseBody{}, nil, nil, err
 	}
-	return m, body, nil
+
+	routeVars := mux.Vars(r)
+
+	return m, body, routeVars, nil
 }
 
-func setupContext(w http.ResponseWriter, ctx context.CoreContext, m baseSendBody, from sdk.AccAddress) (context.CoreContext, error) {
+func setupContext(w http.ResponseWriter, ctx context.CoreContext, m baseBody, from sdk.AccAddress) (context.CoreContext, error) {
 	// add gas to context
 	ctx = ctx.WithGas(m.Gas)
 
@@ -127,9 +133,9 @@ func processMsg(w http.ResponseWriter, ctx context.CoreContext, localAccountName
 }
 
 // RequestHandlerFn - http request handler to handle generic transaction api call
-func RequestHandlerFn(cdc *wire.Codec, kb keys.Keybase, ctx context.CoreContext, msgBuilder func(http.ResponseWriter, *wire.Codec, sdk.AccAddress, []byte) (sdk.Msg, error)) http.HandlerFunc {
+func RequestHandlerFn(cdc *wire.Codec, kb keys.Keybase, ctx context.CoreContext, msgBuilder func(http.ResponseWriter, *wire.Codec, sdk.AccAddress, []byte, map[string]string) (sdk.Msg, error)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		m, body, err := extractRequest(w, r, cdc)
+		m, body, routeVars, err := extractRequest(w, r, cdc)
 		if err != nil {
 			return
 		}
@@ -145,7 +151,7 @@ func RequestHandlerFn(cdc *wire.Codec, kb keys.Keybase, ctx context.CoreContext,
 		}
 
 		// build message
-		msg, err := msgBuilder(w, cdc, from, body)
+		msg, err := msgBuilder(w, cdc, from, body, routeVars)
 		if err != nil {
 			return
 		}
