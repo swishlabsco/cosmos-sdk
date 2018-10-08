@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/cosmos/cosmos-sdk/wire"
+	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/x/auth"
 	"github.com/cosmos/cosmos-sdk/x/stake"
 	"github.com/stretchr/testify/require"
@@ -25,13 +25,13 @@ func setGenesis(gapp *GaiaApp, accs ...*auth.BaseAccount) error {
 		StakeData: stake.DefaultGenesisState(),
 	}
 
-	stateBytes, err := wire.MarshalJSONIndent(gapp.cdc, genesisState)
+	stateBytes, err := codec.MarshalJSONIndent(gapp.cdc, genesisState)
 	if err != nil {
 		return err
 	}
 
 	// Initialize the chain
-	vals := []abci.Validator{}
+	vals := []abci.ValidatorUpdate{}
 	gapp.InitChain(abci.RequestInitChain{Validators: vals, AppStateBytes: stateBytes})
 	gapp.Commit()
 

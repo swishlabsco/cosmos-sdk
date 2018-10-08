@@ -2,77 +2,60 @@ package cli
 
 import (
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 
-	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/context"
-	sdk "github.com/cosmos/cosmos-sdk/types"
-	"github.com/cosmos/cosmos-sdk/wire"
-	authcmd "github.com/cosmos/cosmos-sdk/x/auth/client/cli"
-
+	"github.com/cosmos/cosmos-sdk/client/utils"
+	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/examples/democoin/x/cool"
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	authcmd "github.com/cosmos/cosmos-sdk/x/auth/client/cli"
+	authtxb "github.com/cosmos/cosmos-sdk/x/auth/client/txbuilder"
 )
 
-// take the coolness quiz transaction
-func QuizTxCmd(cdc *wire.Codec) *cobra.Command {
+// QuizTxCmd invokes the coolness quiz transaction.
+func QuizTxCmd(cdc *codec.Codec) *cobra.Command {
 	return &cobra.Command{
 		Use:   "cool [answer]",
 		Short: "What's cooler than being cool?",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := context.NewCoreContextFromViper().WithDecoder(authcmd.GetAccountDecoder(cdc))
+			txBldr := authtxb.NewTxBuilderFromCLI().WithCodec(cdc)
+			cliCtx := context.NewCLIContext().
+				WithCodec(cdc).
+				WithAccountDecoder(authcmd.GetAccountDecoder(cdc))
 
-			// get the from address from the name flag
-			from, err := ctx.GetFromAddress()
+			from, err := cliCtx.GetFromAddress()
 			if err != nil {
 				return err
 			}
 
-			// create the message
 			msg := cool.NewMsgQuiz(from, args[0])
 
-			// get account name
-			name := viper.GetString(client.FlagName)
-
-			// build and sign the transaction, then broadcast to Tendermint
-			err = ctx.EnsureSignBuildBroadcast(name, []sdk.Msg{msg}, cdc)
-			if err != nil {
-				return err
-			}
-
-			return nil
+			return utils.CompleteAndBroadcastTxCli(txBldr, cliCtx, []sdk.Msg{msg})
 		},
 	}
 }
 
-// set a new cool trend transaction
-func SetTrendTxCmd(cdc *wire.Codec) *cobra.Command {
+// SetTrendTxCmd sends a new cool trend transaction.
+func SetTrendTxCmd(cdc *codec.Codec) *cobra.Command {
 	return &cobra.Command{
 		Use:   "setcool [answer]",
 		Short: "You're so cool, tell us what is cool!",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := context.NewCoreContextFromViper().WithDecoder(authcmd.GetAccountDecoder(cdc))
+			txBldr := authtxb.NewTxBuilderFromCLI().WithCodec(cdc)
+			cliCtx := context.NewCLIContext().
+				WithCodec(cdc).
+				WithAccountDecoder(authcmd.GetAccountDecoder(cdc))
 
-			// get the from address from the name flag
-			from, err := ctx.GetFromAddress()
+			from, err := cliCtx.GetFromAddress()
 			if err != nil {
 				return err
 			}
 
-			// get account name
-			name := viper.GetString(client.FlagName)
-
-			// create the message
 			msg := cool.NewMsgSetTrend(from, args[0])
 
-			// build and sign the transaction, then broadcast to Tendermint
-			err = ctx.EnsureSignBuildBroadcast(name, []sdk.Msg{msg}, cdc)
-			if err != nil {
-				return err
-			}
-
-			return nil
+			return utils.CompleteAndBroadcastTxCli(txBldr, cliCtx, []sdk.Msg{msg})
 		},
 	}
 }

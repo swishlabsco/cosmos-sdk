@@ -1,6 +1,7 @@
 package types
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -76,6 +77,24 @@ func TestIsGTECoin(t *testing.T) {
 	}
 }
 
+func TestIsLTCoin(t *testing.T) {
+	cases := []struct {
+		inputOne Coin
+		inputTwo Coin
+		expected bool
+	}{
+		{NewInt64Coin("A", 1), NewInt64Coin("A", 1), false},
+		{NewInt64Coin("A", 2), NewInt64Coin("A", 1), false},
+		{NewInt64Coin("A", -1), NewInt64Coin("A", 5), true},
+		{NewInt64Coin("a", 0), NewInt64Coin("b", 1), true},
+	}
+
+	for tcIndex, tc := range cases {
+		res := tc.inputOne.IsLT(tc.inputTwo)
+		require.Equal(t, tc.expected, res, "coin LT relation is incorrect, tc #%d", tcIndex)
+	}
+}
+
 func TestIsEqualCoin(t *testing.T) {
 	cases := []struct {
 		inputOne Coin
@@ -147,6 +166,46 @@ func TestMinusCoin(t *testing.T) {
 
 }
 
+func TestIsZeroCoins(t *testing.T) {
+	cases := []struct {
+		inputOne Coins
+		expected bool
+	}{
+		{Coins{}, true},
+		{Coins{NewInt64Coin("A", 0)}, true},
+		{Coins{NewInt64Coin("A", 0), NewInt64Coin("B", 0)}, true},
+		{Coins{NewInt64Coin("A", 1)}, false},
+		{Coins{NewInt64Coin("A", 0), NewInt64Coin("B", 1)}, false},
+	}
+
+	for _, tc := range cases {
+		res := tc.inputOne.IsZero()
+		require.Equal(t, tc.expected, res)
+	}
+}
+
+func TestEqualCoins(t *testing.T) {
+	cases := []struct {
+		inputOne Coins
+		inputTwo Coins
+		expected bool
+	}{
+		{Coins{}, Coins{}, true},
+		{Coins{NewInt64Coin("A", 0)}, Coins{NewInt64Coin("A", 0)}, true},
+		{Coins{NewInt64Coin("A", 0), NewInt64Coin("B", 1)}, Coins{NewInt64Coin("A", 0), NewInt64Coin("B", 1)}, true},
+		{Coins{NewInt64Coin("A", 0)}, Coins{NewInt64Coin("B", 0)}, false},
+		{Coins{NewInt64Coin("A", 0)}, Coins{NewInt64Coin("A", 1)}, false},
+		{Coins{NewInt64Coin("A", 0)}, Coins{NewInt64Coin("A", 0), NewInt64Coin("B", 1)}, false},
+		// TODO: is it expected behaviour? shouldn't we sort the coins before comparing them?
+		{Coins{NewInt64Coin("A", 0), NewInt64Coin("B", 1)}, Coins{NewInt64Coin("B", 1), NewInt64Coin("A", 0)}, false},
+	}
+
+	for tcnum, tc := range cases {
+		res := tc.inputOne.IsEqual(tc.inputTwo)
+		require.Equal(t, tc.expected, res, "Equality is differed from expected. tc #%d, expected %b, actual %b.", tcnum, tc.expected, res)
+	}
+}
+
 func TestCoins(t *testing.T) {
 
 	//Define the coins to be used in tests
@@ -160,6 +219,7 @@ func TestCoins(t *testing.T) {
 	empty := Coins{
 		{"GOLD", NewInt(0)},
 	}
+	null := Coins{}
 	badSort1 := Coins{
 		{"TREE", NewInt(1)},
 		{"GAS", NewInt(1)},
@@ -184,7 +244,10 @@ func TestCoins(t *testing.T) {
 
 	assert.True(t, good.IsValid(), "Coins are valid")
 	assert.True(t, good.IsPositive(), "Expected coins to be positive: %v", good)
+	assert.False(t, null.IsPositive(), "Expected coins to not be positive: %v", null)
 	assert.True(t, good.IsGTE(empty), "Expected %v to be >= %v", good, empty)
+	assert.False(t, good.IsLT(empty), "Expected %v to be < %v", good, empty)
+	assert.True(t, empty.IsLT(good), "Expected %v to be < %v", empty, good)
 	assert.False(t, neg.IsPositive(), "Expected neg coins to not be positive: %v", neg)
 	assert.Zero(t, len(sum), "Expected 0 coins")
 	assert.False(t, badSort1.IsValid(), "Coins are not sorted")
@@ -359,5 +422,57 @@ func TestAmountOf(t *testing.T) {
 		assert.Equal(t, NewInt(tc.amountOfGAS), tc.coins.AmountOf("GAS"))
 		assert.Equal(t, NewInt(tc.amountOfMINERAL), tc.coins.AmountOf("MINERAL"))
 		assert.Equal(t, NewInt(tc.amountOfTREE), tc.coins.AmountOf("TREE"))
+	}
+}
+
+func BenchmarkCoinsAdditionIntersect(b *testing.B) {
+	benchmarkingFunc := func(numCoinsA int, numCoinsB int) func(b *testing.B) {
+		return func(b *testing.B) {
+			coinsA := Coins(make([]Coin, numCoinsA))
+			coinsB := Coins(make([]Coin, numCoinsB))
+			for i := 0; i < numCoinsA; i++ {
+				coinsA[i] = NewCoin("COINZ_"+string(i), NewInt(int64(i)))
+			}
+			for i := 0; i < numCoinsB; i++ {
+				coinsB[i] = NewCoin("COINZ_"+string(i), NewInt(int64(i)))
+			}
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				coinsA.Plus(coinsB)
+			}
+		}
+	}
+
+	benchmarkSizes := [][]int{{1, 1}, {5, 5}, {5, 20}, {1, 1000}, {2, 1000}}
+	for i := 0; i < len(benchmarkSizes); i++ {
+		sizeA := benchmarkSizes[i][0]
+		sizeB := benchmarkSizes[i][1]
+		b.Run(fmt.Sprintf("sizes: A_%d, B_%d", sizeA, sizeB), benchmarkingFunc(sizeA, sizeB))
+	}
+}
+
+func BenchmarkCoinsAdditionNoIntersect(b *testing.B) {
+	benchmarkingFunc := func(numCoinsA int, numCoinsB int) func(b *testing.B) {
+		return func(b *testing.B) {
+			coinsA := Coins(make([]Coin, numCoinsA))
+			coinsB := Coins(make([]Coin, numCoinsB))
+			for i := 0; i < numCoinsA; i++ {
+				coinsA[i] = NewCoin("COINZ_"+string(numCoinsB+i), NewInt(int64(i)))
+			}
+			for i := 0; i < numCoinsB; i++ {
+				coinsB[i] = NewCoin("COINZ_"+string(i), NewInt(int64(i)))
+			}
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				coinsA.Plus(coinsB)
+			}
+		}
+	}
+
+	benchmarkSizes := [][]int{{1, 1}, {5, 5}, {5, 20}, {1, 1000}, {2, 1000}, {1000, 2}}
+	for i := 0; i < len(benchmarkSizes); i++ {
+		sizeA := benchmarkSizes[i][0]
+		sizeB := benchmarkSizes[i][1]
+		b.Run(fmt.Sprintf("sizes: A_%d, B_%d", sizeA, sizeB), benchmarkingFunc(sizeA, sizeB))
 	}
 }

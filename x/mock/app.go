@@ -1,16 +1,18 @@
 package mock
 
 import (
+	"fmt"
 	"math/rand"
 	"os"
 
 	bam "github.com/cosmos/cosmos-sdk/baseapp"
+	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	"github.com/cosmos/cosmos-sdk/wire"
 	"github.com/cosmos/cosmos-sdk/x/auth"
 	abci "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/crypto/ed25519"
+	"github.com/tendermint/tendermint/crypto/secp256k1"
 	dbm "github.com/tendermint/tendermint/libs/db"
 	"github.com/tendermint/tendermint/libs/log"
 )
@@ -22,7 +24,7 @@ const chainID = ""
 // capabilities aren't needed for testing.
 type App struct {
 	*bam.BaseApp
-	Cdc        *wire.Codec // Cdc is public since the codec is passed into the module anyways
+	Cdc        *codec.Codec // Cdc is public since the codec is passed into the module anyways
 	KeyMain    *sdk.KVStoreKey
 	KeyAccount *sdk.KVStoreKey
 
@@ -41,10 +43,10 @@ func NewApp() *App {
 	db := dbm.NewMemDB()
 
 	// Create the cdc with some standard codecs
-	cdc := wire.NewCodec()
-	sdk.RegisterWire(cdc)
-	wire.RegisterCrypto(cdc)
-	auth.RegisterWire(cdc)
+	cdc := codec.New()
+	sdk.RegisterCodec(cdc)
+	codec.RegisterCrypto(cdc)
+	auth.RegisterCodec(cdc)
 
 	// Create your application object
 	app := &App{
@@ -74,17 +76,28 @@ func NewApp() *App {
 
 // CompleteSetup completes the application setup after the routes have been
 // registered.
-func (app *App) CompleteSetup(newKeys []*sdk.KVStoreKey) error {
+func (app *App) CompleteSetup(newKeys ...sdk.StoreKey) error {
 	newKeys = append(newKeys, app.KeyMain)
 	newKeys = append(newKeys, app.KeyAccount)
 
-	app.MountStoresIAVL(newKeys...)
+	for _, key := range newKeys {
+		switch key.(type) {
+		case *sdk.KVStoreKey:
+			app.MountStore(key, sdk.StoreTypeIAVL)
+		case *sdk.TransientStoreKey:
+			app.MountStore(key, sdk.StoreTypeTransient)
+		default:
+			return fmt.Errorf("unsupported StoreKey: %+v", key)
+		}
+	}
+
 	err := app.LoadLatestVersion(app.KeyMain)
 
 	return err
 }
 
 // InitChainer performs custom logic for initialization.
+// nolint: errcheck
 func (app *App) InitChainer(ctx sdk.Context, _ abci.RequestInitChain) abci.ResponseInitChain {
 	// Load the genesis accounts
 	for _, genacc := range app.GenesisAccounts {
@@ -173,7 +186,32 @@ func GeneratePrivKeyAddressPairs(n int) (keys []crypto.PrivKey, addrs []sdk.AccA
 	keys = make([]crypto.PrivKey, n, n)
 	addrs = make([]sdk.AccAddress, n, n)
 	for i := 0; i < n; i++ {
-		keys[i] = ed25519.GenPrivKey()
+		if rand.Int63()%2 == 0 {
+			keys[i] = secp256k1.GenPrivKey()
+		} else {
+			keys[i] = ed25519.GenPrivKey()
+		}
+		addrs[i] = sdk.AccAddress(keys[i].PubKey().Address())
+	}
+	return
+}
+
+// GeneratePrivKeyAddressPairsFromRand generates a total of n private key, address
+// pairs using the provided randomness source.
+func GeneratePrivKeyAddressPairsFromRand(rand *rand.Rand, n int) (keys []crypto.PrivKey, addrs []sdk.AccAddress) {
+	keys = make([]crypto.PrivKey, n, n)
+	addrs = make([]sdk.AccAddress, n, n)
+	for i := 0; i < n; i++ {
+		secret := make([]byte, 32)
+		_, err := rand.Read(secret)
+		if err != nil {
+			panic("Could not read randomness")
+		}
+		if rand.Int63()%2 == 0 {
+			keys[i] = secp256k1.GenPrivKeySecp256k1(secret)
+		} else {
+			keys[i] = ed25519.GenPrivKeyFromSecret(secret)
+		}
 		addrs[i] = sdk.AccAddress(keys[i].PubKey().Address())
 	}
 	return
@@ -181,6 +219,7 @@ func GeneratePrivKeyAddressPairs(n int) (keys []crypto.PrivKey, addrs []sdk.AccA
 
 // RandomSetGenesis set genesis accounts with random coin values using the
 // provided addresses and coin denominations.
+// nolint: errcheck
 func RandomSetGenesis(r *rand.Rand, app *App, addrs []sdk.AccAddress, denoms []string) {
 	accts := make([]auth.Account, len(addrs), len(addrs))
 	randCoinIntervals := []BigInterval{

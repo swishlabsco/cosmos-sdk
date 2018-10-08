@@ -1,6 +1,7 @@
 package rpc
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -11,7 +12,9 @@ import (
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/context"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/spf13/viper"
 	tmtypes "github.com/tendermint/tendermint/types"
+	"github.com/cosmos/cosmos-sdk/client/utils"
 )
 
 // TODO these next two functions feel kinda hacky based on their placement
@@ -19,14 +22,17 @@ import (
 //ValidatorCommand returns the validator set for a given height
 func ValidatorCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "validator-set [height]",
+		Use:   "tendermint-validator-set [height]",
 		Short: "Get the full tendermint validator set at given height",
 		Args:  cobra.MaximumNArgs(1),
 		RunE:  printValidators,
 	}
 	cmd.Flags().StringP(client.FlagNode, "n", "tcp://localhost:26657", "Node to connect to")
-	// TODO: change this to false when we can
-	cmd.Flags().Bool(client.FlagTrustNode, true, "Don't verify proofs for responses")
+	viper.BindPFlag(client.FlagNode, cmd.Flags().Lookup(client.FlagNode))
+	cmd.Flags().Bool(client.FlagTrustNode, false, "Trust connected full node (don't verify proofs for responses)")
+	viper.BindPFlag(client.FlagTrustNode, cmd.Flags().Lookup(client.FlagTrustNode))
+	cmd.Flags().String(client.FlagChainID, "", "Chain ID of Tendermint node")
+	viper.BindPFlag(client.FlagChainID, cmd.Flags().Lookup(client.FlagChainID))
 	return cmd
 }
 
@@ -45,7 +51,7 @@ type ResultValidatorsOutput struct {
 }
 
 func bech32ValidatorOutput(validator *tmtypes.Validator) (ValidatorOutput, error) {
-	bechValPubkey, err := sdk.Bech32ifyValPub(validator.PubKey)
+	bechValPubkey, err := sdk.Bech32ifyConsPub(validator.PubKey)
 	if err != nil {
 		return ValidatorOutput{}, err
 	}
@@ -58,9 +64,9 @@ func bech32ValidatorOutput(validator *tmtypes.Validator) (ValidatorOutput, error
 	}, nil
 }
 
-func getValidators(ctx context.CoreContext, height *int64) ([]byte, error) {
+func getValidators(cliCtx context.CLIContext, height *int64) ([]byte, error) {
 	// get the node
-	node, err := ctx.GetNode()
+	node, err := cliCtx.GetNode()
 	if err != nil {
 		return nil, err
 	}
@@ -70,10 +76,22 @@ func getValidators(ctx context.CoreContext, height *int64) ([]byte, error) {
 		return nil, err
 	}
 
+	if !cliCtx.TrustNode {
+		check, err := cliCtx.Verify(validatorsRes.BlockHeight)
+		if err != nil {
+			return nil, err
+		}
+
+		if !bytes.Equal(check.ValidatorsHash, tmtypes.NewValidatorSet(validatorsRes.Validators).Hash()) {
+			return nil, fmt.Errorf("got invalid validatorset")
+		}
+	}
+
 	outputValidatorsRes := ResultValidatorsOutput{
 		BlockHeight: validatorsRes.BlockHeight,
 		Validators:  make([]ValidatorOutput, len(validatorsRes.Validators)),
 	}
+
 	for i := 0; i < len(validatorsRes.Validators); i++ {
 		outputValidatorsRes.Validators[i], err = bech32ValidatorOutput(validatorsRes.Validators[i])
 		if err != nil {
@@ -81,11 +99,11 @@ func getValidators(ctx context.CoreContext, height *int64) ([]byte, error) {
 		}
 	}
 
-	output, err := cdc.MarshalJSON(outputValidatorsRes)
-	if err != nil {
-		return nil, err
+	if cliCtx.Indent {
+		return cdc.MarshalJSONIndent(outputValidatorsRes, "", "  ")
 	}
-	return output, nil
+	return cdc.MarshalJSON(outputValidatorsRes)
+
 }
 
 // CMD
@@ -104,7 +122,7 @@ func printValidators(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	output, err := getValidators(context.NewCoreContextFromViper(), height)
+	output, err := getValidators(context.NewCLIContext(), height)
 	if err != nil {
 		return err
 	}
@@ -116,47 +134,50 @@ func printValidators(cmd *cobra.Command, args []string) error {
 // REST
 
 // Validator Set at a height REST handler
-func ValidatorSetRequestHandlerFn(ctx context.CoreContext) http.HandlerFunc {
+func ValidatorSetRequestHandlerFn(cliCtx context.CLIContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
+
 		height, err := strconv.ParseInt(vars["height"], 10, 64)
 		if err != nil {
 			w.WriteHeader(400)
 			w.Write([]byte("ERROR: Couldn't parse block height. Assumed format is '/validatorsets/{height}'."))
 			return
 		}
-		chainHeight, err := GetChainHeight(ctx)
+
+		chainHeight, err := GetChainHeight(cliCtx)
 		if height > chainHeight {
 			w.WriteHeader(404)
 			w.Write([]byte("ERROR: Requested block height is bigger then the chain length."))
 			return
 		}
-		output, err := getValidators(ctx, &height)
+
+		output, err := getValidators(cliCtx, &height)
 		if err != nil {
 			w.WriteHeader(500)
 			w.Write([]byte(err.Error()))
 			return
 		}
-
-		w.Write(output)
+		utils.PostProcessResponse(w, cdc, output, cliCtx.Indent)
 	}
 }
 
 // Latest Validator Set REST handler
-func LatestValidatorSetRequestHandlerFn(ctx context.CoreContext) http.HandlerFunc {
+func LatestValidatorSetRequestHandlerFn(cliCtx context.CLIContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		height, err := GetChainHeight(ctx)
+		height, err := GetChainHeight(cliCtx)
 		if err != nil {
 			w.WriteHeader(500)
 			w.Write([]byte(err.Error()))
 			return
 		}
-		output, err := getValidators(ctx, &height)
+
+		output, err := getValidators(cliCtx, &height)
 		if err != nil {
 			w.WriteHeader(500)
 			w.Write([]byte(err.Error()))
 			return
 		}
-		w.Write(output)
+		utils.PostProcessResponse(w, cdc, output, cliCtx.Indent)
 	}
 }

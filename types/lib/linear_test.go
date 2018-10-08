@@ -11,9 +11,9 @@ import (
 
 	abci "github.com/tendermint/tendermint/abci/types"
 
+	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/store"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	wire "github.com/cosmos/cosmos-sdk/wire"
 )
 
 type S struct {
@@ -21,14 +21,26 @@ type S struct {
 	B bool
 }
 
-func defaultComponents(key sdk.StoreKey) (sdk.Context, *wire.Codec) {
+func defaultComponents(key sdk.StoreKey) (sdk.Context, *codec.Codec) {
 	db := dbm.NewMemDB()
 	cms := store.NewCommitMultiStore(db)
 	cms.MountStoreWithDB(key, sdk.StoreTypeIAVL, db)
 	cms.LoadLatestVersion()
 	ctx := sdk.NewContext(cms, abci.Header{}, false, log.NewNopLogger())
-	cdc := wire.NewCodec()
+	cdc := codec.New()
 	return ctx, cdc
+}
+
+func TestNewLinear(t *testing.T) {
+	cdc := codec.New()
+	require.NotPanics(t, func() { NewLinear(cdc, nil, nil) })
+	require.NotPanics(t, func() { NewLinear(cdc, nil, DefaultLinearKeys()) })
+	require.NotPanics(t, func() { NewLinear(cdc, nil, &LinearKeys{[]byte{0xAA}, []byte{0xBB}, []byte{0xCC}}) })
+
+	require.Panics(t, func() { NewLinear(cdc, nil, &LinearKeys{nil, nil, nil}) })
+	require.Panics(t, func() { NewLinear(cdc, nil, &LinearKeys{[]byte{0xAA}, nil, nil}) })
+	require.Panics(t, func() { NewLinear(cdc, nil, &LinearKeys{nil, []byte{0xBB}, nil}) })
+	require.Panics(t, func() { NewLinear(cdc, nil, &LinearKeys{nil, nil, []byte{0xCC}}) })
 }
 
 func TestList(t *testing.T) {

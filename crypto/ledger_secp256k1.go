@@ -1,8 +1,9 @@
 package crypto
 
 import (
-	"errors"
 	"fmt"
+
+	"github.com/pkg/errors"
 
 	secp256k1 "github.com/btcsuite/btcd/btcec"
 	tmcrypto "github.com/tendermint/tendermint/crypto"
@@ -10,15 +11,17 @@ import (
 )
 
 var (
-	ledgerDevice    LedgerSECP256K1
-	ledgerDeviceErr error
-
-	// ErrMissingLedgerDevice is used to reflect that a ledger device load has
-	// not been attempted.
-	ErrMissingLedgerDevice = errors.New("missing ledger device")
+	// discoverLedger defines a function to be invoked at runtime for discovering
+	// a connected Ledger device.
+	discoverLedger discoverLedgerFn
 )
 
 type (
+	// discoverLedgerFn defines a Ledger discovery function that returns a
+	// connected device or an error upon failure. Its allows a method to avoid CGO
+	// dependencies when Ledger support is potentially not enabled.
+	discoverLedgerFn func() (LedgerSECP256K1, error)
+
 	// DerivationPath represents a Ledger derivation path.
 	DerivationPath []uint32
 
@@ -47,18 +50,17 @@ type (
 // CONTRACT: The ledger device, ledgerDevice, must be loaded and set prior to
 // any creation of a PrivKeyLedgerSecp256k1.
 func NewPrivKeyLedgerSecp256k1(path DerivationPath) (tmcrypto.PrivKey, error) {
-	if ledgerDevice == nil {
-		err := ErrMissingLedgerDevice
-		if ledgerDeviceErr != nil {
-			err = ledgerDeviceErr
-		}
-
-		return nil, fmt.Errorf("failed to create PrivKeyLedgerSecp256k1: %v", err)
+	if discoverLedger == nil {
+		return nil, errors.New("no Ledger discovery function defined")
 	}
 
-	pkl := &PrivKeyLedgerSecp256k1{Path: path, ledger: ledgerDevice}
+	device, err := discoverLedger()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create PrivKeyLedgerSecp256k1")
+	}
 
-	// cache the pubkey for later use
+	pkl := &PrivKeyLedgerSecp256k1{Path: path, ledger: device}
+
 	pubKey, err := pkl.getPubKey()
 	if err != nil {
 		return nil, err
@@ -114,7 +116,7 @@ func (pkl PrivKeyLedgerSecp256k1) Equals(other tmcrypto.PrivKey) bool {
 // Communication is checked on NewPrivKeyLedger and PrivKeyFromBytes, returning
 // an error, so this should only trigger if the private key is held in memory
 // for a while before use.
-func (pkl PrivKeyLedgerSecp256k1) Sign(msg []byte) (tmcrypto.Signature, error) {
+func (pkl PrivKeyLedgerSecp256k1) Sign(msg []byte) ([]byte, error) {
 	sig, err := pkl.signLedgerSecp256k1(msg)
 	if err != nil {
 		return nil, err
@@ -135,13 +137,8 @@ func (pkl PrivKeyLedgerSecp256k1) getPubKey() (key tmcrypto.PubKey, err error) {
 	return key, err
 }
 
-func (pkl PrivKeyLedgerSecp256k1) signLedgerSecp256k1(msg []byte) (tmcrypto.Signature, error) {
-	sigBytes, err := pkl.ledger.SignSECP256K1(pkl.Path, msg)
-	if err != nil {
-		return nil, err
-	}
-
-	return tmsecp256k1.SignatureSecp256k1FromBytes(sigBytes), nil
+func (pkl PrivKeyLedgerSecp256k1) signLedgerSecp256k1(msg []byte) ([]byte, error) {
+	return pkl.ledger.SignSECP256K1(pkl.Path, msg)
 }
 
 func (pkl PrivKeyLedgerSecp256k1) pubkeyLedgerSecp256k1() (pub tmcrypto.PubKey, err error) {

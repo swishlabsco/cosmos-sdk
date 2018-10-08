@@ -1,8 +1,10 @@
+// nolint
 package types
 
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/golang/protobuf/proto"
 
@@ -30,6 +32,7 @@ type Context struct {
 }
 
 // create a new context
+// nolint: unparam
 func NewContext(ms MultiStore, header abci.Header, isCheckTx bool, logger log.Logger) Context {
 	c := Context{
 		Context: context.Background(),
@@ -40,10 +43,12 @@ func NewContext(ms MultiStore, header abci.Header, isCheckTx bool, logger log.Lo
 	c = c.WithBlockHeader(header)
 	c = c.WithBlockHeight(header.Height)
 	c = c.WithChainID(header.ChainID)
+	c = c.WithIsCheckTx(isCheckTx)
 	c = c.WithTxBytes(nil)
 	c = c.WithLogger(logger)
-	c = c.WithSigningValidators(nil)
+	c = c.WithVoteInfos(nil)
 	c = c.WithGasMeter(NewInfiniteGasMeter())
+	c = c.WithMinimumFees(Coins{})
 	return c
 }
 
@@ -131,10 +136,12 @@ const (
 	contextKeyBlockHeight
 	contextKeyConsensusParams
 	contextKeyChainID
+	contextKeyIsCheckTx
 	contextKeyTxBytes
 	contextKeyLogger
-	contextKeySigningValidators
+	contextKeyVoteInfos
 	contextKeyGasMeter
+	contextKeyMinimumFees
 )
 
 // NOTE: Do not expose MultiStore.
@@ -144,62 +151,73 @@ func (c Context) multiStore() MultiStore {
 	return c.Value(contextKeyMultiStore).(MultiStore)
 }
 
-// nolint
-func (c Context) BlockHeader() abci.Header {
-	return c.Value(contextKeyBlockHeader).(abci.Header)
-}
-func (c Context) BlockHeight() int64 {
-	return c.Value(contextKeyBlockHeight).(int64)
-}
+func (c Context) BlockHeader() abci.Header { return c.Value(contextKeyBlockHeader).(abci.Header) }
+
+func (c Context) BlockHeight() int64 { return c.Value(contextKeyBlockHeight).(int64) }
+
 func (c Context) ConsensusParams() abci.ConsensusParams {
 	return c.Value(contextKeyConsensusParams).(abci.ConsensusParams)
 }
-func (c Context) ChainID() string {
-	return c.Value(contextKeyChainID).(string)
+
+func (c Context) ChainID() string { return c.Value(contextKeyChainID).(string) }
+
+func (c Context) TxBytes() []byte { return c.Value(contextKeyTxBytes).([]byte) }
+
+func (c Context) Logger() log.Logger { return c.Value(contextKeyLogger).(log.Logger) }
+
+func (c Context) VoteInfos() []abci.VoteInfo {
+	return c.Value(contextKeyVoteInfos).([]abci.VoteInfo)
 }
-func (c Context) TxBytes() []byte {
-	return c.Value(contextKeyTxBytes).([]byte)
-}
-func (c Context) Logger() log.Logger {
-	return c.Value(contextKeyLogger).(log.Logger)
-}
-func (c Context) SigningValidators() []abci.SigningValidator {
-	return c.Value(contextKeySigningValidators).([]abci.SigningValidator)
-}
-func (c Context) GasMeter() GasMeter {
-	return c.Value(contextKeyGasMeter).(GasMeter)
-}
-func (c Context) WithMultiStore(ms MultiStore) Context {
-	return c.withValue(contextKeyMultiStore, ms)
-}
+
+func (c Context) GasMeter() GasMeter { return c.Value(contextKeyGasMeter).(GasMeter) }
+
+func (c Context) IsCheckTx() bool { return c.Value(contextKeyIsCheckTx).(bool) }
+
+func (c Context) MinimumFees() Coins { return c.Value(contextKeyMinimumFees).(Coins) }
+
+func (c Context) WithMultiStore(ms MultiStore) Context { return c.withValue(contextKeyMultiStore, ms) }
+
 func (c Context) WithBlockHeader(header abci.Header) Context {
 	var _ proto.Message = &header // for cloning.
 	return c.withValue(contextKeyBlockHeader, header)
 }
+
+func (c Context) WithBlockTime(newTime time.Time) Context {
+	newHeader := c.BlockHeader()
+	newHeader.Time = newTime
+	return c.WithBlockHeader(newHeader)
+}
+
 func (c Context) WithBlockHeight(height int64) Context {
 	return c.withValue(contextKeyBlockHeight, height)
 }
+
 func (c Context) WithConsensusParams(params *abci.ConsensusParams) Context {
 	if params == nil {
 		return c
 	}
 	return c.withValue(contextKeyConsensusParams, params).
-		WithGasMeter(NewGasMeter(params.TxSize.MaxGas))
+		WithGasMeter(NewGasMeter(params.BlockSize.MaxGas))
 }
-func (c Context) WithChainID(chainID string) Context {
-	return c.withValue(contextKeyChainID, chainID)
+
+func (c Context) WithChainID(chainID string) Context { return c.withValue(contextKeyChainID, chainID) }
+
+func (c Context) WithTxBytes(txBytes []byte) Context { return c.withValue(contextKeyTxBytes, txBytes) }
+
+func (c Context) WithLogger(logger log.Logger) Context { return c.withValue(contextKeyLogger, logger) }
+
+func (c Context) WithVoteInfos(VoteInfos []abci.VoteInfo) Context {
+	return c.withValue(contextKeyVoteInfos, VoteInfos)
 }
-func (c Context) WithTxBytes(txBytes []byte) Context {
-	return c.withValue(contextKeyTxBytes, txBytes)
+
+func (c Context) WithGasMeter(meter GasMeter) Context { return c.withValue(contextKeyGasMeter, meter) }
+
+func (c Context) WithIsCheckTx(isCheckTx bool) Context {
+	return c.withValue(contextKeyIsCheckTx, isCheckTx)
 }
-func (c Context) WithLogger(logger log.Logger) Context {
-	return c.withValue(contextKeyLogger, logger)
-}
-func (c Context) WithSigningValidators(SigningValidators []abci.SigningValidator) Context {
-	return c.withValue(contextKeySigningValidators, SigningValidators)
-}
-func (c Context) WithGasMeter(meter GasMeter) Context {
-	return c.withValue(contextKeyGasMeter, meter)
+
+func (c Context) WithMinimumFees(minFees Coins) Context {
+	return c.withValue(contextKeyMinimumFees, minFees)
 }
 
 // Cache the multistore and return a new cached context. The cached context is

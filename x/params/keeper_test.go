@@ -9,9 +9,9 @@ import (
 	dbm "github.com/tendermint/tendermint/libs/db"
 	"github.com/tendermint/tendermint/libs/log"
 
+	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/store"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	"github.com/cosmos/cosmos-sdk/wire"
 )
 
 func defaultContext(key sdk.StoreKey) sdk.Context {
@@ -37,7 +37,7 @@ func TestKeeper(t *testing.T) {
 
 	skey := sdk.NewKVStoreKey("test")
 	ctx := defaultContext(skey)
-	setter := NewKeeper(wire.NewCodec(), skey).Setter()
+	setter := NewKeeper(codec.New(), skey).Setter()
 
 	for _, kv := range kvs {
 		err := setter.Set(ctx, kv.key, kv.param)
@@ -51,7 +51,7 @@ func TestKeeper(t *testing.T) {
 		assert.Equal(t, kv.param, param)
 	}
 
-	cdc := wire.NewCodec()
+	cdc := codec.New()
 	for _, kv := range kvs {
 		var param int64
 		bz := setter.GetRaw(ctx, kv.key)
@@ -75,7 +75,7 @@ func TestKeeper(t *testing.T) {
 func TestGetter(t *testing.T) {
 	key := sdk.NewKVStoreKey("test")
 	ctx := defaultContext(key)
-	keeper := NewKeeper(wire.NewCodec(), key)
+	keeper := NewKeeper(codec.New(), key)
 
 	g := keeper.Getter()
 	s := keeper.Setter()
@@ -94,7 +94,7 @@ func TestGetter(t *testing.T) {
 		{"uint64", uint64(1)},
 		{"int", sdk.NewInt(1)},
 		{"uint", sdk.NewUint(1)},
-		{"rat", sdk.NewRat(1)},
+		{"rat", sdk.NewDec(1)},
 	}
 
 	assert.NotPanics(t, func() { s.SetString(ctx, kvs[0].key, "test") })
@@ -107,7 +107,7 @@ func TestGetter(t *testing.T) {
 	assert.NotPanics(t, func() { s.SetUint64(ctx, kvs[7].key, uint64(1)) })
 	assert.NotPanics(t, func() { s.SetInt(ctx, kvs[8].key, sdk.NewInt(1)) })
 	assert.NotPanics(t, func() { s.SetUint(ctx, kvs[9].key, sdk.NewUint(1)) })
-	assert.NotPanics(t, func() { s.SetRat(ctx, kvs[10].key, sdk.NewRat(1)) })
+	assert.NotPanics(t, func() { s.SetDec(ctx, kvs[10].key, sdk.NewDec(1)) })
 
 	var res interface{}
 	var err error
@@ -263,18 +263,18 @@ func TestGetter(t *testing.T) {
 	assert.Equal(t, def9, res)
 
 	// Rat
-	def10 := sdk.NewRat(0)
-	res, err = g.GetRat(ctx, kvs[10].key)
+	def10 := sdk.NewDec(0)
+	res, err = g.GetDec(ctx, kvs[10].key)
 	assert.Nil(t, err)
 	assert.Equal(t, kvs[10].param, res)
 
-	_, err = g.GetRat(ctx, "invalid")
+	_, err = g.GetDec(ctx, "invalid")
 	assert.NotNil(t, err)
 
-	res = g.GetRatWithDefault(ctx, kvs[10].key, def10)
+	res = g.GetDecWithDefault(ctx, kvs[10].key, def10)
 	assert.Equal(t, kvs[10].param, res)
 
-	res = g.GetRatWithDefault(ctx, "invalid", def10)
+	res = g.GetDecWithDefault(ctx, "invalid", def10)
 	assert.Equal(t, def10, res)
 
 }

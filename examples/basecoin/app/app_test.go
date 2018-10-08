@@ -4,9 +4,9 @@ import (
 	"os"
 	"testing"
 
+	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/examples/basecoin/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	"github.com/cosmos/cosmos-sdk/wire"
 	"github.com/cosmos/cosmos-sdk/x/auth"
 	"github.com/stretchr/testify/require"
 	abci "github.com/tendermint/tendermint/abci/types"
@@ -22,14 +22,14 @@ func setGenesis(baseApp *BasecoinApp, accounts ...*types.AppAccount) (types.Gene
 	}
 
 	genesisState := types.GenesisState{Accounts: genAccts}
-	stateBytes, err := wire.MarshalJSONIndent(baseApp.cdc, genesisState)
+	stateBytes, err := codec.MarshalJSONIndent(baseApp.cdc, genesisState)
 	if err != nil {
 		return types.GenesisState{}, err
 	}
 
 	// initialize and commit the chain
 	baseApp.InitChain(abci.RequestInitChain{
-		Validators: []abci.Validator{}, AppStateBytes: stateBytes,
+		Validators: []abci.ValidatorUpdate{}, AppStateBytes: stateBytes,
 	})
 	baseApp.Commit()
 
@@ -67,12 +67,12 @@ func TestGenesis(t *testing.T) {
 	// reload app and ensure the account is still there
 	baseApp = NewBasecoinApp(logger, db)
 
-	stateBytes, err := wire.MarshalJSONIndent(baseApp.cdc, genState)
+	stateBytes, err := codec.MarshalJSONIndent(baseApp.cdc, genState)
 	require.Nil(t, err)
 
 	// initialize the chain with the expected genesis state
 	baseApp.InitChain(abci.RequestInitChain{
-		Validators: []abci.Validator{}, AppStateBytes: stateBytes,
+		Validators: []abci.ValidatorUpdate{}, AppStateBytes: stateBytes,
 	})
 
 	ctx = baseApp.BaseApp.NewContext(true, abci.Header{})

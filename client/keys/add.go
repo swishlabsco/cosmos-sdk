@@ -46,7 +46,6 @@ phrase, otherwise, a new key will be generated.`,
 	return cmd
 }
 
-// nolint: gocyclo
 // TODO remove the above when addressing #1446
 func runAddCmd(cmd *cobra.Command, args []string) error {
 	var kb keys.Keybase
@@ -128,7 +127,8 @@ func printCreate(info keys.Info, seed string) {
 	output := viper.Get(cli.OutputFlag)
 	switch output {
 	case "text":
-		printInfo(info)
+		printKeyInfo(info, Bech32KeyOutput)
+
 		// print seed unless requested not to.
 		if !viper.GetBool(client.FlagUseLedger) && !viper.GetBool(flagNoBackup) {
 			fmt.Println("**Important** write this seed phrase in a safe place.")

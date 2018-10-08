@@ -139,8 +139,8 @@ Amino can also be used for persistent storage of interfaces.
 To use Amino, simply create a codec, and then register types:
 
 ```
-func NewCodec() *wire.Codec {
-	cdc := wire.NewCodec()
+func NewCodec() *codec.Codec {
+	cdc := codec.New()
 	cdc.RegisterInterface((*sdk.Msg)(nil), nil)
 	cdc.RegisterConcrete(MsgSend{}, "example/MsgSend", nil)
 	cdc.RegisterConcrete(MsgIssue{}, "example/MsgIssue", nil)
@@ -150,7 +150,7 @@ func NewCodec() *wire.Codec {
 ```
 
 Note: We also register the types in the `tendermint/tendermint/crypto` module so that `crypto.PubKey`
-and `crypto.Signature` are encoded/decoded correctly.
+is encoded/decoded correctly.
 
 Amino supports encoding and decoding in both a binary and JSON format.
 See the [codec API docs](https://godoc.org/github.com/tendermint/go-amino#Codec) for more details.
@@ -166,7 +166,7 @@ type app2Tx struct {
     sdk.Msg
     
     PubKey    crypto.PubKey
-    Signature crypto.Signature
+    Signature []byte
 }
 
 // This tx only has one Msg.
@@ -175,7 +175,7 @@ func (tx app2Tx) GetMsgs() []sdk.Msg {
 }
 
 // Amino decode app2Tx. Capable of decoding both MsgSend and MsgIssue
-func tx2Decoder(cdc *wire.Codec) sdk.TxDecoder {
+func tx2Decoder(cdc *codec.Codec) sdk.TxDecoder {
 	return func(txBytes []byte) (sdk.Tx, sdk.Error) {
 		var tx app2Tx
 		err := cdc.UnmarshalBinary(txBytes, &tx)

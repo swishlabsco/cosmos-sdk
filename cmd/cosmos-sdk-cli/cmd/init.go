@@ -7,10 +7,11 @@ import (
 	"os"
 	"strings"
 
+	"path/filepath"
+
 	"github.com/cosmos/cosmos-sdk/version"
 	"github.com/spf13/cobra"
 	tmversion "github.com/tendermint/tendermint/version"
-	"path/filepath"
 )
 
 var remoteBasecoinPath = "github.com/cosmos/cosmos-sdk/examples/basecoin"
@@ -59,6 +60,7 @@ func resolveProjectPath(remoteProjectPath string) string {
 	return gopath + string(os.PathSeparator) + "src" + string(os.PathSeparator) + remoteProjectPath
 }
 
+// nolint: unparam, errcheck
 func copyBasecoinTemplate(projectName string, projectPath string, remoteProjectPath string) {
 	basecoinProjectPath := resolveProjectPath(remoteBasecoinPath)
 	filepath.Walk(basecoinProjectPath, func(path string, f os.FileInfo, err error) error {
@@ -87,6 +89,7 @@ func copyBasecoinTemplate(projectName string, projectPath string, remoteProjectP
 	})
 }
 
+// nolint: errcheck
 func createGopkg(projectPath string) {
 	// Create gopkg.toml file
 	dependencies := map[string]string{
@@ -110,6 +113,7 @@ func createGopkg(projectPath string) {
 	ioutil.WriteFile(projectPath+"/Gopkg.toml", []byte(contents), os.ModePerm)
 }
 
+// nolint: errcheck
 func createMakefile(projectPath string) {
 	// Create makefile
 	// TODO: Should we use tools/ directory as in Cosmos-SDK to get tools for linting etc.

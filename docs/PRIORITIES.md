@@ -1,70 +1,46 @@
+# Post-0.25/GoS Pre-Release
 
-## Fees
-- Collection
-  - Gas price based on parameter
-  - (which gets changed automatically)
-  - Per block gas usage as %
-  - Windowing function
-    - Block N,
-    - For Block N-x ~ N, get average of %
-  - Should take into account time.
-  - Standard for querying this price // needs to be used by UX.
-- Distribution
-  - MVP: 1 week, 1 week for testing.
+## Staking/Slashing/Stability
 
-## Governance v2
-- V1 is just text proposals
-  - Software upgrade stuff
-    - https://github.com/cosmos/cosmos-sdk/issues/1734#issuecomment-407254938
-    - https://github.com/cosmos/cosmos-sdk/issues/1079
-- We need to test auto-flipping w/ threshold voting power.
-- Super simple:
-  - Only use text proposals
-  - On-chain mechanism for agreeing on when to "flip" to new functionality
-
-## Slashing/Stability
-- current: downtime, double signing during unbonding
-- who gets slashed when -- needs review about edge cases
-- need to communicate to everyone that lite has this edge case
-	- Issues:
-    - https://github.com/cosmos/cosmos-sdk/issues/1378
-    - https://github.com/cosmos/cosmos-sdk/issues/1348
-    - https://github.com/cosmos/cosmos-sdk/issues/1440
-  * Est Difficulty: Hard
-  * _*Note:*_ This feature needs to be fully fleshed out. Will require a meeting between @jaekwon, @cwgoes, @rigel, @zaki, @bucky to discuss the issues. @jackzampolin to facilitate.
-
-## Vesting
-- 24 accounts with NLocktime
-- “No funds can be transferred before timelock”
-- New atoms and such can be withdrawn right way
-- Requires being able to send fees and inflation to new account
+- Other slashing issues blocking for launch - [#1256](https://github.com/cosmos/cosmos-sdk/issues/1256)
+- Miscellaneous minor staking issues
+  - [List here](https://github.com/cosmos/cosmos-sdk/issues?utf8=%E2%9C%93&q=is%3Aissue+is%3Aopen+label%3Astaking+label%3Aprelaunch)
+  - Need to figure out scope of work here to estimate time
+  - @rigelrozanski to start next
+- Consider "tombstone" / "prison" - double-sign and you can never validate again - https://github.com/cosmos/cosmos-sdk/issues/2363
 
 ## Multisig
-- Make it work with Cli
-- ADR
 
-## Reserve Pool
-- No withdrawing from it at launch
+- Need to test changes in https://github.com/cosmos/cosmos-sdk/pull/2165
+- Spam prevention - https://github.com/cosmos/cosmos-sdk/issues/2019
 
-## Other:
-- Need to update for NextValidatorSet - need to upgrade SDK for it
-- Need to update for new ABCI changes - error string, tags are list of lists, proposer in header
-- Inflation ? 
+## ABCI Changes
+
+- Need to update for new ABCI changes when/if they land - error string, tags are list of lists
+- Need to verify correct proposer reward semantics
+- CheckEvidence/DeliverEvidence, CheckTx/DeliverTx ordering semantics
 
 ## Gas
-- Calculate gas
 
-## Reward proposer
-- Requires tendermint changes
+- Charge for transaction size
+- Decide what "one gas" corresponds to (standard hardware benchmarks?)
+- More benchmarking
+- Consider charging based on maximum depth of IAVL tree iteration
+- Test out gas estimation in CLI and LCD and ensure the UX works
+
+## LCD
+
+- Bianje working on implementation of ICS standards
+- Additional PR incoming for ICS 22 and ICS 23
+- Decide what ought to be ICS-standardized and what ought not to
 
 # Lower priority
 
-## Circuit Breaker
-- Kinda needed for enabling txs.
+## Governance v2
 
-## Governance proposal changes
-- V2 is parameter changes
+- Circuit breaker - https://github.com/cosmos/cosmos-sdk/issues/926
+- Parameter change proposals (roughly the same implementation as circuit breaker)
 
-## Slashing/Stability
-- tendermint evidence: we don’t yet slash byzantine signatures (signing at all) when not bonded.
+## Documentation
 
+- gaiad / gaiacli / gaialite documentation!

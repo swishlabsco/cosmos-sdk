@@ -5,18 +5,19 @@ import (
 	"github.com/tendermint/tendermint/crypto"
 
 	"github.com/cosmos/cosmos-sdk/crypto/keys/hd"
+	"github.com/cosmos/cosmos-sdk/types"
 )
 
 // Keybase exposes operations on a generic keystore
 type Keybase interface {
-
 	// CRUD on the keystore
 	List() ([]Info, error)
 	Get(name string) (Info, error)
+	GetByAddress(address types.AccAddress) (Info, error)
 	Delete(name, passphrase string) error
 
 	// Sign some bytes, looking up the private key to use
-	Sign(name, passphrase string, msg []byte) (crypto.Signature, crypto.PubKey, error)
+	Sign(name, passphrase string, msg []byte) ([]byte, crypto.PubKey, error)
 
 	// CreateMnemonic creates a new mnemonic, and derives a hierarchical deterministic
 	// key from that.
@@ -44,14 +45,37 @@ type Keybase interface {
 	ExportPrivateKeyObject(name string, passphrase string) (crypto.PrivKey, error)
 }
 
+// KeyType reflects a human-readable type for key listing.
+type KeyType uint
+
+// Info KeyTypes
+const (
+	TypeLocal   KeyType = 0
+	TypeLedger  KeyType = 1
+	TypeOffline KeyType = 2
+)
+
+var keyTypes = map[KeyType]string{
+	TypeLocal:   "local",
+	TypeLedger:  "ledger",
+	TypeOffline: "offline",
+}
+
+// String implements the stringer interface for KeyType.
+func (kt KeyType) String() string {
+	return keyTypes[kt]
+}
+
 // Info is the publicly exposed information about a keypair
 type Info interface {
 	// Human-readable type for key listing
-	GetType() string
+	GetType() KeyType
 	// Name of the key
 	GetName() string
 	// Public key
 	GetPubKey() crypto.PubKey
+	// Address
+	GetAddress() types.AccAddress
 }
 
 var _ Info = &localInfo{}
@@ -73,8 +97,8 @@ func newLocalInfo(name string, pub crypto.PubKey, privArmor string) Info {
 	}
 }
 
-func (i localInfo) GetType() string {
-	return "local"
+func (i localInfo) GetType() KeyType {
+	return TypeLocal
 }
 
 func (i localInfo) GetName() string {
@@ -83,6 +107,10 @@ func (i localInfo) GetName() string {
 
 func (i localInfo) GetPubKey() crypto.PubKey {
 	return i.PubKey
+}
+
+func (i localInfo) GetAddress() types.AccAddress {
+	return i.PubKey.Address().Bytes()
 }
 
 // ledgerInfo is the public information about a Ledger key
@@ -100,8 +128,8 @@ func newLedgerInfo(name string, pub crypto.PubKey, path ccrypto.DerivationPath) 
 	}
 }
 
-func (i ledgerInfo) GetType() string {
-	return "ledger"
+func (i ledgerInfo) GetType() KeyType {
+	return TypeLedger
 }
 
 func (i ledgerInfo) GetName() string {
@@ -110,6 +138,10 @@ func (i ledgerInfo) GetName() string {
 
 func (i ledgerInfo) GetPubKey() crypto.PubKey {
 	return i.PubKey
+}
+
+func (i ledgerInfo) GetAddress() types.AccAddress {
+	return i.PubKey.Address().Bytes()
 }
 
 // offlineInfo is the public information about an offline key
@@ -125,8 +157,8 @@ func newOfflineInfo(name string, pub crypto.PubKey) Info {
 	}
 }
 
-func (i offlineInfo) GetType() string {
-	return "offline"
+func (i offlineInfo) GetType() KeyType {
+	return TypeOffline
 }
 
 func (i offlineInfo) GetName() string {
@@ -135,6 +167,10 @@ func (i offlineInfo) GetName() string {
 
 func (i offlineInfo) GetPubKey() crypto.PubKey {
 	return i.PubKey
+}
+
+func (i offlineInfo) GetAddress() types.AccAddress {
+	return i.PubKey.Address().Bytes()
 }
 
 // encoding info

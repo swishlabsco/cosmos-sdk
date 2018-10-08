@@ -7,6 +7,7 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/context"
+	"github.com/spf13/viper"
 )
 
 const (
@@ -40,15 +41,18 @@ func initClientCommand() *cobra.Command {
 	cmd.Flags().String(flagGenesis, "", "Genesis file to verify header validity")
 	cmd.Flags().String(flagCommit, "", "File with trusted and signed header")
 	cmd.Flags().String(flagValHash, "", "Hash of trusted validator set (hex-encoded)")
+	viper.BindPFlag(client.FlagChainID, cmd.Flags().Lookup(client.FlagChainID))
+	viper.BindPFlag(client.FlagNode, cmd.Flags().Lookup(client.FlagNode))
+
 	return cmd
 }
 
 // Register REST endpoints
-func RegisterRoutes(ctx context.CoreContext, r *mux.Router) {
-	r.HandleFunc("/node_info", NodeInfoRequestHandlerFn(ctx)).Methods("GET")
-	r.HandleFunc("/syncing", NodeSyncingRequestHandlerFn(ctx)).Methods("GET")
-	r.HandleFunc("/blocks/latest", LatestBlockRequestHandlerFn(ctx)).Methods("GET")
-	r.HandleFunc("/blocks/{height}", BlockRequestHandlerFn(ctx)).Methods("GET")
-	r.HandleFunc("/validatorsets/latest", LatestValidatorSetRequestHandlerFn(ctx)).Methods("GET")
-	r.HandleFunc("/validatorsets/{height}", ValidatorSetRequestHandlerFn(ctx)).Methods("GET")
+func RegisterRoutes(cliCtx context.CLIContext, r *mux.Router) {
+	r.HandleFunc("/node_info", NodeInfoRequestHandlerFn(cliCtx)).Methods("GET")
+	r.HandleFunc("/syncing", NodeSyncingRequestHandlerFn(cliCtx)).Methods("GET")
+	r.HandleFunc("/blocks/latest", LatestBlockRequestHandlerFn(cliCtx)).Methods("GET")
+	r.HandleFunc("/blocks/{height}", BlockRequestHandlerFn(cliCtx)).Methods("GET")
+	r.HandleFunc("/validatorsets/latest", LatestValidatorSetRequestHandlerFn(cliCtx)).Methods("GET")
+	r.HandleFunc("/validatorsets/{height}", ValidatorSetRequestHandlerFn(cliCtx)).Methods("GET")
 }

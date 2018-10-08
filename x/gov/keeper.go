@@ -1,8 +1,8 @@
 package gov
 
 import (
+	codec "github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	wire "github.com/cosmos/cosmos-sdk/wire"
 	"github.com/cosmos/cosmos-sdk/x/bank"
 	"github.com/cosmos/cosmos-sdk/x/params"
 )
@@ -31,15 +31,19 @@ type Keeper struct {
 	// The (unexposed) keys used to access the stores from the Context.
 	storeKey sdk.StoreKey
 
-	// The wire codec for binary encoding/decoding.
-	cdc *wire.Codec
+	// The codec codec for binary encoding/decoding.
+	cdc *codec.Codec
 
 	// Reserved codespace
 	codespace sdk.CodespaceType
 }
 
-// NewGovernanceMapper returns a mapper that uses go-wire to (binary) encode and decode gov types.
-func NewKeeper(cdc *wire.Codec, key sdk.StoreKey, ps params.Setter, ck bank.Keeper, ds sdk.DelegationSet, codespace sdk.CodespaceType) Keeper {
+// NewKeeper returns a governance keeper. It handles:
+// - submitting governance proposals
+// - depositing funds into proposals, and activating upon sufficient funds being deposited
+// - users voting on proposals, with weight proportional to stake in the system
+// - and tallying the result of the vote.
+func NewKeeper(cdc *codec.Codec, key sdk.StoreKey, ps params.Setter, ck bank.Keeper, ds sdk.DelegationSet, codespace sdk.CodespaceType) Keeper {
 	return Keeper{
 		storeKey:  key,
 		ps:        ps,
@@ -49,11 +53,6 @@ func NewKeeper(cdc *wire.Codec, key sdk.StoreKey, ps params.Setter, ck bank.Keep
 		cdc:       cdc,
 		codespace: codespace,
 	}
-}
-
-// Returns the go-wire codec.
-func (keeper Keeper) WireCodec() *wire.Codec {
-	return keeper.cdc
 }
 
 // =====================================================
@@ -66,14 +65,14 @@ func (keeper Keeper) NewTextProposal(ctx sdk.Context, title string, description 
 		return nil
 	}
 	var proposal Proposal = &TextProposal{
-		ProposalID:       proposalID,
-		Title:            title,
-		Description:      description,
-		ProposalType:     proposalType,
-		Status:           StatusDepositPeriod,
-		TotalDeposit:     sdk.Coins{},
-		SubmitBlock:      ctx.BlockHeight(),
-		VotingStartBlock: -1, // TODO: Make Time
+		ProposalID:   proposalID,
+		Title:        title,
+		Description:  description,
+		ProposalType: proposalType,
+		Status:       StatusDepositPeriod,
+		TallyResult:  EmptyTallyResult(),
+		TotalDeposit: sdk.Coins{},
+		SubmitTime:   ctx.BlockHeader().Time,
 	}
 	keeper.SetProposal(ctx, proposal)
 	keeper.InactiveProposalQueuePush(ctx, proposal)
@@ -107,6 +106,51 @@ func (keeper Keeper) DeleteProposal(ctx sdk.Context, proposal Proposal) {
 	store.Delete(KeyProposal(proposal.GetProposalID()))
 }
 
+// Get Proposal from store by ProposalID
+func (keeper Keeper) GetProposalsFiltered(ctx sdk.Context, voterAddr sdk.AccAddress, depositerAddr sdk.AccAddress, status ProposalStatus, numLatest int64) []Proposal {
+
+	maxProposalID, err := keeper.peekCurrentProposalID(ctx)
+	if err != nil {
+		return nil
+	}
+
+	matchingProposals := []Proposal{}
+
+	if numLatest <= 0 {
+		numLatest = maxProposalID
+	}
+
+	for proposalID := maxProposalID - numLatest; proposalID < maxProposalID; proposalID++ {
+		if voterAddr != nil && len(voterAddr) != 0 {
+			_, found := keeper.GetVote(ctx, proposalID, voterAddr)
+			if !found {
+				continue
+			}
+		}
+
+		if depositerAddr != nil && len(depositerAddr) != 0 {
+			_, found := keeper.GetDeposit(ctx, proposalID, depositerAddr)
+			if !found {
+				continue
+			}
+		}
+
+		proposal := keeper.GetProposal(ctx, proposalID)
+		if proposal == nil {
+			continue
+		}
+
+		if validProposalStatus(status) {
+			if proposal.GetStatus() != status {
+				continue
+			}
+		}
+
+		matchingProposals = append(matchingProposals, proposal)
+	}
+	return matchingProposals
+}
+
 func (keeper Keeper) setInitialProposalID(ctx sdk.Context, proposalID int64) sdk.Error {
 	store := ctx.KVStore(keeper.storeKey)
 	bz := store.Get(KeyNextProposalID)
@@ -118,6 +162,17 @@ func (keeper Keeper) setInitialProposalID(ctx sdk.Context, proposalID int64) sdk
 	return nil
 }
 
+// Get the last used proposal ID
+func (keeper Keeper) GetLastProposalID(ctx sdk.Context) (proposalID int64) {
+	proposalID, err := keeper.peekCurrentProposalID(ctx)
+	if err != nil {
+		return 0
+	}
+	proposalID--
+	return
+}
+
+// Gets the next available ProposalID and increments it
 func (keeper Keeper) getNewProposalID(ctx sdk.Context) (proposalID int64, err sdk.Error) {
 	store := ctx.KVStore(keeper.storeKey)
 	bz := store.Get(KeyNextProposalID)
@@ -130,8 +185,19 @@ func (keeper Keeper) getNewProposalID(ctx sdk.Context) (proposalID int64, err sd
 	return proposalID, nil
 }
 
+// Peeks the next available ProposalID without incrementing it
+func (keeper Keeper) peekCurrentProposalID(ctx sdk.Context) (proposalID int64, err sdk.Error) {
+	store := ctx.KVStore(keeper.storeKey)
+	bz := store.Get(KeyNextProposalID)
+	if bz == nil {
+		return -1, ErrInvalidGenesis(keeper.codespace, "InitialProposalID never set")
+	}
+	keeper.cdc.MustUnmarshalBinary(bz, &proposalID)
+	return proposalID, nil
+}
+
 func (keeper Keeper) activateVotingPeriod(ctx sdk.Context, proposal Proposal) {
-	proposal.SetVotingStartBlock(ctx.BlockHeight())
+	proposal.SetVotingStartTime(ctx.BlockHeader().Time)
 	proposal.SetStatus(StatusVotingPeriod)
 	keeper.SetProposal(ctx, proposal)
 	keeper.ActiveProposalQueuePush(ctx, proposal)
@@ -141,6 +207,7 @@ func (keeper Keeper) activateVotingPeriod(ctx sdk.Context, proposal Proposal) {
 // Procedures
 
 // Returns the current Deposit Procedure from the global param store
+// nolint: errcheck
 func (keeper Keeper) GetDepositProcedure(ctx sdk.Context) DepositProcedure {
 	var depositProcedure DepositProcedure
 	keeper.ps.Get(ctx, ParamStoreKeyDepositProcedure, &depositProcedure)
@@ -148,6 +215,7 @@ func (keeper Keeper) GetDepositProcedure(ctx sdk.Context) DepositProcedure {
 }
 
 // Returns the current Voting Procedure from the global param store
+// nolint: errcheck
 func (keeper Keeper) GetVotingProcedure(ctx sdk.Context) VotingProcedure {
 	var votingProcedure VotingProcedure
 	keeper.ps.Get(ctx, ParamStoreKeyVotingProcedure, &votingProcedure)
@@ -155,20 +223,24 @@ func (keeper Keeper) GetVotingProcedure(ctx sdk.Context) VotingProcedure {
 }
 
 // Returns the current Tallying Procedure from the global param store
+// nolint: errcheck
 func (keeper Keeper) GetTallyingProcedure(ctx sdk.Context) TallyingProcedure {
 	var tallyingProcedure TallyingProcedure
 	keeper.ps.Get(ctx, ParamStoreKeyTallyingProcedure, &tallyingProcedure)
 	return tallyingProcedure
 }
 
+// nolint: errcheck
 func (keeper Keeper) setDepositProcedure(ctx sdk.Context, depositProcedure DepositProcedure) {
 	keeper.ps.Set(ctx, ParamStoreKeyDepositProcedure, &depositProcedure)
 }
 
+// nolint: errcheck
 func (keeper Keeper) setVotingProcedure(ctx sdk.Context, votingProcedure VotingProcedure) {
 	keeper.ps.Set(ctx, ParamStoreKeyVotingProcedure, &votingProcedure)
 }
 
+// nolint: errcheck
 func (keeper Keeper) setTallyingProcedure(ctx sdk.Context, tallyingProcedure TallyingProcedure) {
 	keeper.ps.Set(ctx, ParamStoreKeyTallyingProcedure, &tallyingProcedure)
 }
