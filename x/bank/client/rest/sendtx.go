@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"io/ioutil"
 	"net/http"
 
 	"github.com/cosmos/cosmos-sdk/client/context"
@@ -20,13 +21,22 @@ func RegisterRoutes(cliCtx context.CLIContext, r *mux.Router, cdc *wire.Codec, k
 }
 
 type sendBody struct {
-	Amount sdk.Coins `json:"amount"`
+	// fees is not used currently
+	// Fees             sdk.Coin  `json="fees"`
+	Amount           sdk.Coins `json:"amount"`
+	LocalAccountName string    `json:"name"`
+	Password         string    `json:"password"`
+	ChainID          string    `json:"chain_id"`
+	AccountNumber    int64     `json:"account_number"`
+	Sequence         int64     `json:"sequence"`
+	Gas              int64     `json:"gas"`
 }
 
-func buildSendMsg(w http.ResponseWriter, cdc *wire.Codec, from sdk.AccAddress, body []byte, routeVars map[string]string) (sdk.Msg, error) {
-	var m sendBody
+var msgCdc = wire.NewCodec()
 
-	bech32addr := routeVars["address"]
+func init() {
+	bank.RegisterWire(msgCdc)
+}
 
 // SendRequestHandlerFn - http request handler to send coins to a address
 func SendRequestHandlerFn(cdc *wire.Codec, kb keys.Keybase, cliCtx context.CLIContext) http.HandlerFunc {
@@ -102,6 +112,4 @@ func SendRequestHandlerFn(cdc *wire.Codec, kb keys.Keybase, cliCtx context.CLICo
 
 		w.Write(output)
 	}
-	msg := client.BuildMsg(from, to, m.Amount)
-	return msg, nil
 }
