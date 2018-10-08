@@ -3,20 +3,20 @@ package rest
 import (
 	"net/http"
 
-	"github.com/cosmos/cosmos-sdk/crypto/keys"
-	"github.com/gorilla/mux"
-
 	"github.com/cosmos/cosmos-sdk/client/context"
-	lcdhelpers "github.com/cosmos/cosmos-sdk/client/lcd/helpers"
+	"github.com/cosmos/cosmos-sdk/crypto/keys"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/wire"
+	authctx "github.com/cosmos/cosmos-sdk/x/auth/client/context"
+	"github.com/cosmos/cosmos-sdk/x/bank"
 	"github.com/cosmos/cosmos-sdk/x/bank/client"
+
+	"github.com/gorilla/mux"
 )
 
 // RegisterRoutes - Central function to define routes that get registered by the main application
-func RegisterRoutes(ctx context.CoreContext, r *mux.Router, cdc *wire.Codec, kb keys.Keybase) {
-	r.HandleFunc("/accounts/{address}/send", lcdhelpers.RequestHandlerFn(cdc, kb, ctx, buildSendMsg)).Methods("POST")
-
+func RegisterRoutes(cliCtx context.CLIContext, r *mux.Router, cdc *wire.Codec, kb keys.Keybase) {
+	r.HandleFunc("/accounts/{address}/send", SendRequestHandlerFn(cdc, kb, cliCtx)).Methods("POST")
 }
 
 type sendBody struct {
@@ -28,18 +28,79 @@ func buildSendMsg(w http.ResponseWriter, cdc *wire.Codec, from sdk.AccAddress, b
 
 	bech32addr := routeVars["address"]
 
-	to, err := sdk.AccAddressFromBech32(bech32addr)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(err.Error()))
-		return nil, err
-	}
+// SendRequestHandlerFn - http request handler to send coins to a address
+func SendRequestHandlerFn(cdc *wire.Codec, kb keys.Keybase, cliCtx context.CLIContext) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// collect data
+		vars := mux.Vars(r)
+		bech32addr := vars["address"]
 
-	err = cdc.UnmarshalJSON(body, &m)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(err.Error()))
-		return nil, err
+		to, err := sdk.AccAddressFromBech32(bech32addr)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(err.Error()))
+			return
+		}
+
+		var m sendBody
+		body, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(err.Error()))
+			return
+		}
+		err = msgCdc.UnmarshalJSON(body, &m)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(err.Error()))
+			return
+		}
+
+		info, err := kb.Get(m.LocalAccountName)
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte(err.Error()))
+			return
+		}
+
+		// build message
+		msg := client.BuildMsg(sdk.AccAddress(info.GetPubKey().Address()), to, m.Amount)
+		if err != nil { // XXX rechecking same error ?
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(err.Error()))
+			return
+		}
+
+		txCtx := authctx.TxContext{
+			Codec:         cdc,
+			Gas:           m.Gas,
+			ChainID:       m.ChainID,
+			AccountNumber: m.AccountNumber,
+			Sequence:      m.Sequence,
+		}
+
+		txBytes, err := txCtx.BuildAndSign(m.LocalAccountName, m.Password, []sdk.Msg{msg})
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte(err.Error()))
+			return
+		}
+
+		res, err := cliCtx.BroadcastTx(txBytes)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(err.Error()))
+			return
+		}
+
+		output, err := wire.MarshalJSONIndent(cdc, res)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(err.Error()))
+			return
+		}
+
+		w.Write(output)
 	}
 	msg := client.BuildMsg(from, to, m.Amount)
 	return msg, nil
