@@ -26,11 +26,11 @@ func DefaultGenesisState() GenesisState {
 	return GenesisState{
 		StartingProposalID: 1,
 		DepositProcedure: DepositProcedure{
-			MinDeposit:       sdk.Coins{sdk.NewInt64Coin("steak", 10)},
-			MaxDepositPeriod: 200,
+			MinDeposit:       sdk.Coins{sdk.NewInt64Coin("RUNE", 5000000000)},
+			MaxDepositPeriod: 2000,
 		},
 		VotingProcedure: VotingProcedure{
-			VotingPeriod: 200,
+			VotingPeriod: 2000,
 		},
 		TallyingProcedure: TallyingProcedure{
 			Threshold:         sdk.NewRat(1, 2),
